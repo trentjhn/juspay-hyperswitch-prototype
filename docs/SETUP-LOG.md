@@ -14,7 +14,7 @@ Developers, API Keys, Create New API Key. The secret shows once. The same page s
 
 ## Local payment
 
-`NODE_OPTIONS="" npm run dev`, Yale vs. Harvard, 2 End Zone, $81.35. The checkout page created `pay_fe8be8c9d68aae54760bf2f9b7` with `capture_method: manual`, and the sheet rendered Google Pay, Card, and Affirm. Card `4242 4242 4242 4242` authorized, the redirect landed on `/confirmation`, the capture route returned 200 in 1.6 seconds, and the API reported `succeeded` with 8135 of 8135 received on `stripe_test`.
+`NODE_OPTIONS="" npm run dev`, Yale vs. Harvard, 2 End Zone, $81.35. The checkout page created `pay_1dcb489e3453078319b60b0e88` with `capture_method: manual`, and the sheet rendered Google Pay, Card, and Affirm. Card `4242 4242 4242 4242` authorized, the redirect landed on `/confirmation`, the capture route returned 200 in 1.6 seconds, and the API reported `succeeded` with 8135 of 8135 received on `stripe_test`.
 
 The card fields live in a cross-origin iframe. Chrome extension automation could not type into them; Playwright can, because it drives the frame tree directly.
 
@@ -45,14 +45,10 @@ UConn vs. Villanova, 2 Courtside, $719.75. Over the $500 line in `payment-policy
 
 | Where | Payment | Amount | Auth |
 | --- | --- | --- | --- |
-| localhost | `pay_fe8be8c9d68aae54760bf2f9b7` | $81.35 | no_three_ds |
+| localhost | `pay_1dcb489e3453078319b60b0e88` | $81.35 | no_three_ds |
 | deployed | `pay_1691d9c5d96e4c94d36ab4d650` | $97.03 | no_three_ds |
 | deployed | `pay_3f3398660c81dd96242095ddc2` | $88.07 | no_three_ds |
 | deployed, webhook captured | `pay_5bef49cbe4f535eaeba13014ca` | $179.91 | no_three_ds |
 | deployed, 3DS | `pay_68f53ebbf03990288d61fd4b20` | $719.75 | three_ds |
 
 Screenshots of the checkout, both confirmations, the 3DS challenge, and the 3DS confirmation are in `docs/screenshots/`.
-
-## Still open
-
-Nothing blocks the walkthrough. The architecture doc is a draft to be rewritten in my own words before it goes out.

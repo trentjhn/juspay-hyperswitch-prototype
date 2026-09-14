@@ -83,7 +83,7 @@ Then add the environment variables and redeploy. Importing the repo through the 
 
 The deployment is Git-linked: pushes to `main` redeploy production.
 
-## What was verified against the docs, and what was not
+## What was verified
 
 Verified against https://docs.hyperswitch.io, https://api-reference.hyperswitch.io, the `juspay/hyperswitch` source, and the installed npm packages: the package names and versions (`@juspay-tech/hyper-js` 2.1.0, `@juspay-tech/react-hyper-js` 2.9.0), `loadHyper` options, the `HyperElements` / `UnifiedCheckout` / `useHyper` exports, `confirmPayment` parameters, the sandbox base URL, the `api-key` header, the create / retrieve / capture / cancel / refund endpoints and their fields, the `payment_id` idempotency rule and the `HE_01` duplicate error, the `allowed_payment_method_types` values, the status enum, the query parameters appended to `return_url`, the webhook header name, HMAC algorithm and encoding, the webhook payload shape, the event types, the Dummy Connector recommendation, and the test card numbers.
 
@@ -98,15 +98,15 @@ src/app/page.tsx                          event list
 src/app/events/[slug]/                    event detail + seat picker (client)
 src/app/checkout/                         opens the hold, renders Unified Checkout
 src/app/confirmation/                     captures, shows the receipt
-src/app/api/payments/[id]/capture         POST: retrieve, capture if requires_capture
-src/app/api/payments/[id]/cancel          POST: void an unpaid hold
+src/app/api/payments/[paymentId]/capture  POST: retrieve, capture if requires_capture
+src/app/api/payments/[paymentId]/cancel   POST: void an unpaid hold
 src/app/api/webhooks/hyperswitch          POST: verify + record; GET: list
 src/lib/hyperswitch.ts                    REST client (server only)
 src/lib/hold.ts                           open or resume the hold
 src/lib/payment-policy.ts                 methods, 3DS threshold, hold length
 src/lib/order.ts                          cart parsing, payment_id derivation
 src/lib/events.ts, pricing.ts, money.ts   catalogue, fee math, formatting
-docs/ARCHITECTURE.md                      the decisions doc (draft)
+docs/ARCHITECTURE.md                      the architecture and decisions doc
 docs/SETUP-LOG.md                         what the setup took, and what the docs did not say
 docs/screenshots/                         checkout, confirmations, 3DS challenge
 ```
