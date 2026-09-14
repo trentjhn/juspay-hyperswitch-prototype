@@ -14,9 +14,9 @@ Developers, API Keys, Create New API Key. The secret shows once. The same page s
 
 ## Local payment
 
-`NODE_OPTIONS="" npm run dev`, Yale vs. Harvard, 2 End Zone, $81.35. The checkout page created `pay_1dcb489e3453078319b60b0e88` with `capture_method: manual`, and the sheet rendered Google Pay, Card, and Affirm. Card `4242 4242 4242 4242` authorized, the redirect landed on `/confirmation`, the capture route returned 200 in 1.6 seconds, and the API reported `succeeded` with 8135 of 8135 received on `stripe_test`.
+`npm run dev`, Yale vs. Harvard, 2 End Zone, $81.35. The checkout page created `pay_1dcb489e3453078319b60b0e88` with `capture_method: manual`, and the sheet rendered Google Pay, Card, and Affirm. Card `4242 4242 4242 4242` authorized, the redirect landed on `/confirmation`, the capture route returned 200 in 1.6 seconds, and the API reported `succeeded` with 8135 of 8135 received on `stripe_test`.
 
-The card fields live in a cross-origin iframe. Chrome extension automation could not type into them; Playwright can, because it drives the frame tree directly.
+I scripted the test payments with Playwright so they are repeatable. The card fields live in a cross-origin iframe, which Playwright handles because it drives the frame tree directly.
 
 ## Deploy
 

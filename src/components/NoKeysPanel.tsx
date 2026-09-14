@@ -9,7 +9,7 @@ export default function NoKeysPanel({ vars }: { vars: EnvVar[] }) {
       <p className="mt-2 max-w-prose text-sm text-zinc-700">
         The storefront runs without them; taking a payment does not. Copy <code className="font-mono">.env.example</code> to{" "}
         <code className="font-mono">.env.local</code>, fill in the values below, and restart the dev server. The step-by-step
-        is in <code className="font-mono">docs/TJ-TODO.md</code>.
+        is under &ldquo;Getting sandbox keys&rdquo; in the README.
       </p>
 
       <div className="mt-5 overflow-x-auto">

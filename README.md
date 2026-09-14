@@ -8,16 +8,16 @@ Seat holds map onto Hyperswitch's manual capture: entering checkout authorizes t
 
 ## Run it
 
-Node 22. Every Node command on this machine needs `NODE_OPTIONS=""` in front of it because of a broken preload in the shell environment; the app itself does not care.
+Node 22.
 
 ```
-NODE_OPTIONS="" npm install
-NODE_OPTIONS="" npm run dev
+npm install
+npm run dev
 ```
 
-Open http://localhost:3000. Without keys every page renders and the checkout page shows a panel listing what is missing. `NODE_OPTIONS="" npm run build` and `NODE_OPTIONS="" npm run lint` both pass clean.
+Open http://localhost:3000. Without keys every page renders and the checkout page shows a panel listing what is missing. `npm run build` and `npm run lint` both pass clean.
 
-If the Next.js dev overlay reports issues in your browser, check whether they come from extensions before reading them as bugs. A crypto wallet injecting `window.solana` and a color picker adding an attribute to `<body>` (which shows up as a hydration mismatch) were the only ones seen here; a clean browser profile reports none.
+If the Next.js dev overlay reports issues in your browser, check whether they come from extensions before reading them as bugs. A crypto wallet injecting `window.solana` and a color picker adding an attribute to `<body>` (which shows up as a hydration mismatch) were the only ones I hit; a clean browser profile reports none.
 
 ## Environment variables
 
@@ -57,7 +57,7 @@ Payment policy lives in `src/lib/payment-policy.ts`: cards, Apple Pay, Google Pa
 Local dev has no public URL. Use a tunnel:
 
 ```
-NODE_OPTIONS="" npx localtunnel --port 3000
+npx localtunnel --port 3000
 ```
 
 (or `ngrok http 3000`). The control center does not expose the webhook URL in the UI (Developers, Webhooks is a delivery log, not a settings page). Set it on the business profile through the API, and turn the event flags on explicitly, because they default to null and nothing is sent until they are true:
@@ -75,8 +75,8 @@ The signature check was tested locally by signing a sample payload with `openssl
 ## Deploy to Vercel
 
 ```
-NODE_OPTIONS="" npx vercel login
-NODE_OPTIONS="" npx vercel --prod
+npx vercel login
+npx vercel --prod
 ```
 
 Then add the environment variables and redeploy. Importing the repo through the Vercel dashboard pre-creates every variable named in `.env.example` with an empty value, so `vercel env add` reports "already exists"; remove each with `vercel env rm NAME --yes` first, then `printf '%s' "$VALUE" | vercel env add NAME production`. `return_url` is derived from `x-forwarded-host` and `x-forwarded-proto`, which Vercel sets, so no extra config is needed. Point the sandbox webhook at `https://<your-domain>/api/webhooks/hyperswitch` with the curl above.
