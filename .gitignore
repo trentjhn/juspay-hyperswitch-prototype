@@ -44,3 +44,6 @@ CLAUDE.md
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# playwright-cli snapshots and screenshots
+.playwright-cli/
