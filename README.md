@@ -15,7 +15,7 @@ npm install
 npm run dev
 ```
 
-Open http://localhost:3000. Without keys every page renders and the checkout page shows a panel listing what is missing. `npm run build` and `npm run lint` both pass clean.
+Open http://localhost:3000. Without keys every page renders and the checkout page shows a panel listing what is missing. `npm run build`, `npm run lint`, and `npm test` all pass clean; the tests cover the $50 Affirm floor, the $500 3DS line, and the hold expiry in `src/lib/payment-policy.ts`.
 
 If the Next.js dev overlay reports issues in your browser, check whether they come from extensions before reading them as bugs. A crypto wallet injecting `window.solana` and a color picker adding an attribute to `<body>` (which shows up as a hydration mismatch) were the only ones I hit; a clean browser profile reports none.
 
@@ -35,7 +35,7 @@ Copy `.env.example` to `.env.local` (gitignored) and fill in:
 ## Getting sandbox keys
 
 1. Sign up at https://app.hyperswitch.io/. Signup asks for a business name and creates an organization, a merchant account, and a default business profile.
-2. Connectors, Payment Processors, Connect a Dummy Processor. There are four; pick **Stripe Dummy**. It supports credit, debit, Klarna, Affirm, Afterpay, and Google Pay. Enable Affirm and Google Pay on step 2 of the connector wizard so they render in the sheet. Apple Pay is not offered by any dummy connector.
+2. Connectors, Payment Processors, Connect a Dummy Processor. There are four; pick **Stripe Dummy**. It supports credit, debit, Klarna, Affirm, Afterpay, and Google Pay. Enable Affirm and Google Pay on step 2 of the connector wizard so they render in the sheet. Apple Pay is not offered by any dummy connector. To see routing, also connect **Fauxpay** (cards only) and create a rule under Workflow, Routing; the setup log has the one this sandbox runs.
 3. Developers, API Keys: create an API key. The secret `snd_…` is shown once. The same page also shows the publishable key `pk_snd_…` and the **Payment Response Hash Key**, which is the webhook secret.
 4. The profile ID is on Developers, Payment Settings, next to the merchant ID.
 5. Paste all four into `.env.local`, restart `npm run dev`, and the checkout page renders the Hyperswitch payment sheet.
@@ -43,11 +43,11 @@ Copy `.env.example` to `.env.local` (gitignored) and fill in:
 
 ## How the payment flow works
 
-1. **Seat selection** (`/events/[slug]`): the buyer picks a section and quantity. The page mints a random hold token and sends the cart to `/checkout` in the URL.
+1. **Seat selection** (`/events/[slug]`): the buyer picks a section and quantity. The page mints a random hold token and sends the cart to `/checkout` in the URL; the button disables after the first click, since every click would be a new hold.
 2. **Checkout** (`/checkout`, server component): the server derives a `payment_id` from `sha256(event|section|qty|hold)` and calls `POST /payments` with `capture_method: "manual"`, the amount in cents, `allowed_payment_method_types`, `authentication_type`, and a `return_url` pointing at `/confirmation`. Hyperswitch uses a merchant-supplied `payment_id` as the idempotency key, so a refresh gets error `HE_01` and the server resumes the existing payment instead of opening a second hold. The page renders `HyperElements` and `UnifiedCheckout` from `@juspay-tech/react-hyper-js` with the returned `client_secret`, plus a ten-minute hold timer.
 3. **Authorization**: the buyer pays in the SDK. `confirmPayment` with `redirect: "always"` sends them to `return_url`, which Hyperswitch appends `status` and `payment_intent_client_secret` to.
-4. **Capture** (`/confirmation` calls `POST /api/payments/{id}/capture`): the server retrieves the payment with `force_sync=true`; if it is `requires_capture` it calls `POST /payments/{id}/capture`. Already-captured payments are returned as is, so a refresh is harmless. The page shows the payment ID, status, amount, method, and processor from the API response.
-5. **Hold expiry**: when the timer reaches zero the browser calls `POST /api/payments/{id}/cancel`, which voids the payment only if it is still unpaid (`requires_payment_method` or `requires_confirmation`). Voiding an authorized hold is a server job; see the architecture doc.
+4. **Capture** (`/confirmation` calls `POST /api/payments/{id}/capture` with the `client_secret` from the return URL): the server retrieves the payment with `force_sync=true` and refuses with 403 unless the supplied `client_secret` matches the payment's, so a payment ID alone cannot drive capture or cancel. If the payment is `requires_capture` and the ten-minute hold has passed, it voids instead and the page says so; otherwise it calls `POST /payments/{id}/capture`. Already-captured payments are returned as is, so a refresh is harmless. The page shows the payment ID, status, amount, method, and processor from the API response.
+5. **Hold expiry**: when the timer reaches zero the browser calls `POST /api/payments/{id}/cancel` with the same `client_secret`, which voids the payment only if it is still unpaid (`requires_payment_method` or `requires_confirmation`). Voiding an authorized hold with no browser open is a server job; see the architecture doc.
 6. **Webhooks** (`POST /api/webhooks/hyperswitch`): verifies `X-Webhook-Signature-512` as HMAC-SHA512 (hex) over the raw body with `HYPERSWITCH_WEBHOOK_SECRET`, dedupes on `event_id`, logs the event, and returns 200. `GET` on the same route lists what has landed (in memory, per server instance).
 
 Payment policy lives in `src/lib/payment-policy.ts`: cards, Apple Pay, Google Pay, and Affirm at $50 and above; `three_ds` at $500 and above. Which methods actually render depends on what the connector supports and what is enabled on it. With Stripe Dummy and Affirm plus Google Pay enabled, the sheet shows a Google Pay button, a Card tab, and an Affirm tab. Apple Pay is requested but no dummy connector offers it.
@@ -87,9 +87,9 @@ The deployment is Git-linked: pushes to `main` redeploy production.
 
 Verified against https://docs.hyperswitch.io, https://api-reference.hyperswitch.io, the `juspay/hyperswitch` source, and the installed npm packages: the package names and versions (`@juspay-tech/hyper-js` 2.1.0, `@juspay-tech/react-hyper-js` 2.9.0), `loadHyper` options, the `HyperElements` / `UnifiedCheckout` / `useHyper` exports, `confirmPayment` parameters, the sandbox base URL, the `api-key` header, the create / retrieve / capture / cancel / refund endpoints and their fields, the `payment_id` idempotency rule and the `HE_01` duplicate error, the `allowed_payment_method_types` values, the status enum, the query parameters appended to `return_url`, the webhook header name, HMAC algorithm and encoding, the webhook payload shape, the event types, the Dummy Connector recommendation, and the test card numbers.
 
-Verified live against the sandbox after the account existed: a card payment on localhost and three on the deployed site, each `succeeded` with `capture_method: manual` and the full amount captured through the capture route; a $719.75 order that crossed the 3DS threshold, was created with `authentication_type: three_ds`, redirected to Hyperswitch's simulated challenge page, and completed; and a `payment_succeeded` webhook delivered to the Vercel route, signature-verified, and logged. Payment IDs and the runtime log line are in `docs/SETUP-LOG.md`.
+Verified live against the sandbox after the account existed: a card payment on localhost and three on the deployed site, each created with `capture_method: manual` and reported `succeeded`; a $719.75 order that crossed the 3DS threshold, was created with `authentication_type: three_ds`, redirected to Hyperswitch's simulated challenge page, and completed; a declined card and a rejected 3DS challenge, both rendered as failures; two connectors behind an amount-based routing rule; and a `payment_succeeded` webhook delivered to the Vercel route, signature-verified, and logged. Payment IDs and the runtime log line are in `docs/SETUP-LOG.md`.
 
-The `@juspay-tech/react-hyper-js` package ships no TypeScript types; `src/types/react-hyper-js.d.ts` declares the three exports used here from reading the bundle. The SDK's own type notes say the sandbox dummy connector may report `succeeded` right after authorization even with manual capture; the capture route handles that case, and in practice Stripe Dummy returned `requires_capture` and the capture call moved it to `succeeded`.
+The `@juspay-tech/react-hyper-js` package ships no TypeScript types; `src/types/react-hyper-js.d.ts` declares the three exports used here from reading the bundle. The SDK's own type notes say the sandbox dummy connector may report `succeeded` right after authorization even with manual capture, and it does: every dummy-connector payment in the setup log reached `succeeded` at authorization, before the capture route was called, so in the sandbox the route returns the payment as is. Its `requires_capture` branch, including the hold-expiry check, runs against a real connector and is covered by `route.test.ts` with a mocked one. Details in `docs/SETUP-LOG.md`.
 
 ## Layout
 
@@ -103,10 +103,11 @@ src/app/api/payments/[paymentId]/cancel   POST: void an unpaid hold
 src/app/api/webhooks/hyperswitch          POST: verify + record; GET: list
 src/lib/hyperswitch.ts                    REST client (server only)
 src/lib/hold.ts                           open or resume the hold
-src/lib/payment-policy.ts                 methods, 3DS threshold, hold length
+src/lib/payment-policy.ts                 methods, 3DS threshold, hold length (tests alongside)
+src/app/api/payments/[paymentId]/capture/route.test.ts  capture route: 403, capture, expiry void, idempotent
 src/lib/order.ts                          cart parsing, payment_id derivation
 src/lib/events.ts, pricing.ts, money.ts   catalogue, fee math, formatting
 docs/ARCHITECTURE.md                      the architecture and decisions doc
 docs/SETUP-LOG.md                         what the setup took, and what the docs did not say
-docs/screenshots/                         checkout, confirmations, 3DS challenge
+docs/screenshots/                         checkout, confirmations, 3DS, decline, routing, 3DS reject
 ```

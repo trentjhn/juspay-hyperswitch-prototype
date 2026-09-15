@@ -41,12 +41,17 @@ export default function CheckoutClient({
   const [expired, setExpired] = useState(false);
 
   // When the timer runs out the browser asks the server to void the unpaid
-  // hold. The server refuses to void anything already authorized; that path
-  // belongs to a scheduled sweep, described in docs/ARCHITECTURE.md.
+  // hold, proving it opened the hold with the client_secret. The server
+  // refuses to void anything already authorized; that path belongs to a
+  // scheduled sweep, described in docs/ARCHITECTURE.md.
   const voidHold = useCallback(() => {
     setExpired(true);
-    void fetch(`/api/payments/${paymentId}/cancel`, { method: "POST" }).catch(() => undefined);
-  }, [paymentId]);
+    void fetch(`/api/payments/${paymentId}/cancel`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ client_secret: clientSecret }),
+    }).catch(() => undefined);
+  }, [paymentId, clientSecret]);
 
   if (expired) {
     return (

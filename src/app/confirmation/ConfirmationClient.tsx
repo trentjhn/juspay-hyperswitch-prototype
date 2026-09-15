@@ -5,28 +5,36 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { formatUsd } from "@/lib/money";
 import type { PaymentView } from "@/lib/hyperswitch";
 
-type CaptureResult = { payment: PaymentView; captured: boolean } | { error: string };
+type CaptureResult = { payment: PaymentView; captured: boolean; holdExpired?: boolean } | { error: string };
 
-type State = { kind: "loading" } | { kind: "error"; message: string } | { kind: "done"; payment: PaymentView };
+type State =
+  | { kind: "loading" }
+  | { kind: "error"; message: string }
+  | { kind: "done"; payment: PaymentView; holdExpired: boolean };
 
 // The capture is a POST so that nothing with side effects hangs off a page
 // load. It is safe to repeat: the route returns an already-captured payment
-// as is, which is what a refresh of this page does.
-export default function ConfirmationClient({ paymentId }: { paymentId: string }) {
+// as is, which is what a refresh of this page does. The client_secret from
+// the return URL goes along as proof that this browser opened the hold.
+export default function ConfirmationClient({ paymentId, clientSecret }: { paymentId: string; clientSecret: string | null }) {
   const [state, setState] = useState<State>({ kind: "loading" });
   const started = useRef(false);
 
   const capture = useCallback(async () => {
     setState({ kind: "loading" });
     try {
-      const response = await fetch(`/api/payments/${paymentId}/capture`, { method: "POST" });
+      const response = await fetch(`/api/payments/${paymentId}/capture`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ client_secret: clientSecret }),
+      });
       const result = (await response.json()) as CaptureResult;
       if ("error" in result) setState({ kind: "error", message: result.error });
-      else setState({ kind: "done", payment: result.payment });
+      else setState({ kind: "done", payment: result.payment, holdExpired: result.holdExpired === true });
     } catch {
       setState({ kind: "error", message: "Could not reach the server." });
     }
-  }, [paymentId]);
+  }, [paymentId, clientSecret]);
 
   useEffect(() => {
     if (started.current) return;
@@ -55,6 +63,23 @@ export default function ConfirmationClient({ paymentId }: { paymentId: string })
 
   const { payment } = state;
   const eventHref = payment.metadata?.event_slug ? `/events/${payment.metadata.event_slug}` : "/";
+
+  // The server found the authorization past its hold window and voided it
+  // instead of capturing. Distinct from a hold the buyer let lapse unpaid.
+  if (state.holdExpired) {
+    return (
+      <Panel title="Your hold expired">
+        <p className="text-zinc-600">
+          The ten-minute hold ran out before the seats were confirmed, so the authorization was released and nothing
+          was charged.
+        </p>
+        <Receipt payment={payment} />
+        <Link href={eventHref} className="mt-4 inline-block font-medium text-accent">
+          Pick seats again
+        </Link>
+      </Panel>
+    );
+  }
 
   switch (payment.status) {
     case "succeeded":

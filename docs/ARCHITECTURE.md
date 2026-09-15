@@ -20,13 +20,11 @@ Three more reasons. The US mix matters: cards dominate, wallets are what people 
 
 ## 3. What I built, what I deferred, and why
 
-Built: a catalogue, seat and quantity selection with one fee line, a checkout that opens a manual-capture payment and renders Unified Checkout, a ten-minute hold timer that voids the unpaid hold on expiry, capture on the return page, a confirmation that reads the payment back from the API, and a webhook route that verifies the HMAC-SHA512 signature and records status. Cards, Apple Pay, Google Pay and Affirm are requested; which render depends on the connector.
+Built: a catalogue, seat and quantity selection with one fee line, a checkout that opens a manual-capture payment and renders Unified Checkout, a ten-minute hold timer that voids the unpaid hold on expiry, capture on the return page, gated on the payment's `client_secret` and refused past the hold window, a confirmation that reads the payment back from the API, a webhook route that verifies the HMAC-SHA512 signature and records status, and two connectors behind a routing rule. Deferred, with how I would approach each:
 
-Deferred, with how I would approach each:
+**Refunds and partial refunds.** `POST /refunds` with `payment_id` and an optional `amount`. I would add a cancel-order action that refunds face value and keeps or returns the fee per the event's policy, with `refund_succeeded` and `refund_failed` webhooks as the record. Deferred because it needs an order store and an admin surface; the API call is one line.
 
-**Refunds and partial refunds.** `POST /refunds` with `payment_id` and an optional `amount`; several partials are allowed up to the captured total. I would add a cancel-order action that refunds face value and keeps or returns the fee per the event's policy, with `refund_succeeded` and `refund_failed` webhooks as the record. Deferred because it needs an order store and an admin surface; the API call is one line.
-
-**Auth void on hold expiry.** The prototype voids from the browser when the timer hits zero, and on return to a stale checkout. Neither handles a closed tab. Production needs a scheduled sweep: find holds past expiry still in `requires_payment_method` or `requires_capture`, call `POST /payments/{id}/cancel`, release the seats. The browser should never be what releases inventory.
+**Order store, capture from the webhook, and the sweep.** The buyer authorizes, closes the tab, and the payment sits in `requires_capture` with nothing left to capture or void it. Next: an order record keyed by `payment_id` in Vercel KV; capture from the `payment_authorized` webhook while the order is inside its window; webhook dedupe in that store; and a scheduled sweep that voids expired holds and releases the seats.
 
 **3DS on high-value orders.** I set `authentication_type` to `three_ds` at $500 and above and `no_three_ds` below, in one function. In production that threshold belongs in Hyperswitch's 3DS Decision Manager so ops can change it per event without a deploy, and combine it with card country and velocity.
 
@@ -36,41 +34,34 @@ Deferred, with how I would approach each:
 
 **Fraud and velocity on hot on-sales.** Rate limits by account, card fingerprint and IP at the hold step, before any payment is created; a waiting room in front of checkout for the biggest on-sales; and a fraud connector through Hyperswitch for the score. Infrastructure, not integration.
 
-**Smart routing and failover.** This is why an orchestrator is in the stack at all. On a big on-sale a processor's auth rate can drop for ten minutes, and ten minutes is the whole revenue window. I would run two card processors, route by cost in quiet hours and by observed auth rate during on-sales, and retry soft declines on the second connector. The sandbox has one connector, so there is nothing to route between yet.
+**Smart routing and failover.** This is why an orchestrator is in the stack at all. On a big on-sale a processor's auth rate can drop for ten minutes, and ten minutes is the whole revenue window. Two sandbox connectors, Stripe Dummy and Fauxpay, sit behind a control-center rule: $500 and up to Stripe Dummy, the rest to Fauxpay. Still to do: routing by cost and by auth rate, and soft-decline retry on the second connector.
 
 ## 4. Integration and payment-method choices
 
 **Unified Checkout in the browser, REST from the server.** Card data goes from the SDK to Hyperswitch. My server creates, retrieves, captures and cancels with the secret key and never sees a card number. That keeps the app in the lightest PCI scope and lets Hyperswitch decide what to render per connector.
 
-**`capture_method: manual`.** The hold is the authorization. Capture happens after the redirect back, and only when the payment reports `requires_capture`. A production system captures from the `payment_authorized` webhook after an inventory check; the prototype captures from a POST route so nothing with side effects hangs off a GET.
+**`capture_method: manual`.** The hold is the authorization. Capture happens after the redirect back, and only when the payment reports `requires_capture`. The prototype captures from a POST route so nothing with side effects hangs off a GET.
 
-**Idempotency through `payment_id`.** Hyperswitch treats a merchant-supplied `payment_id` as the idempotency key. I derive it from the cart plus a per-attempt hold token (sha256, 30 characters). A refresh or double submit gets `HE_01`, "already exists", and the server resumes that payment instead of opening a second authorization. A fresh click on the event page mints a new token.
+**Idempotency through `payment_id`.** Hyperswitch treats a merchant-supplied `payment_id` as the idempotency key. I derive it from the cart plus a per-attempt hold token (sha256, 30 characters), so a refresh, a retry, or a re-submit inside one hold gets `HE_01`, "already exists", and resumes that payment. A second click on the event page mints a new token and a new intent; the button disables after the first click.
 
-**Payment methods.** `allowed_payment_method_types` is `credit`, `debit`, `apple_pay`, `google_pay`, plus `affirm` at $50 and above. Affirm over Klarna because it is the BNPL a US ticket buyer already sees at Ticketmaster and SeatGeek; below $50 it is a dead tab, so it is not offered. Wallets render only once a connector supports them and, for Apple Pay, domain verification is done.
+**Payment methods.** `allowed_payment_method_types` is `credit`, `debit`, `apple_pay`, `google_pay`, plus `affirm` at $50 and above. Affirm over Klarna because it is the BNPL a US ticket buyer already sees at Ticketmaster and SeatGeek; below $50 it is a dead tab, so it is not offered.
 
-**Webhooks as the record.** The route verifies `X-Webhook-Signature-512` (HMAC-SHA512 over the raw body, keyed by the profile's hash key), dedupes on `event_id` (in memory here; production dedupes in the order store), and records the status. An order system acts on `payment_succeeded` and `payment_failed`; the return page is a convenience for the human.
+**Webhooks verified and logged; the return page drives capture.** The webhook route verifies `X-Webhook-Signature-512` (HMAC-SHA512 over the raw body, keyed by the profile's hash key), dedupes on `event_id` in memory, and logs the event; nothing acts on it yet. The order store in section 3 makes the webhook the record.
 
 **Amounts in minor units, one fee line.** Cents everywhere until display. The fee on the event page is the fee on the checkout page is the amount sent to Hyperswitch.
 
 ## 5. How the prototype fits together
 
-Next.js App Router. Server components and route handlers hold the secret key; one client component holds the SDK.
-
 ```
 Browser                       Next.js server                        Hyperswitch sandbox
-  |                                |                                        |
-  | GET /checkout?cart&hold        |                                        |
-  |------------------------------->| POST /payments  {payment_id=sha256(cart|hold), capture_method=manual} -->|
+  | GET /checkout?cart&hold ------>| POST /payments {payment_id: sha256(cart|hold),
+  |                                |   capture_method: manual} ------------->|
   |                                |<---- client_secret, requires_payment_method
-  |<--- page + Unified Checkout    |                                        |
   | confirmPayment (SDK) --------------------------------------------------->|  authorize
-  |<------------------ 302 return_url?payment_id&status --------------------|
-  | POST /api/payments/{id}/capture|                                        |
+  |<--- 302 return_url?payment_id&payment_intent_client_secret&status -------|
+  | POST /api/payments/{id}/capture {client_secret}                          |
   |------------------------------->| GET /payments/{id}?force_sync=true --->|
-  |                                |<---- requires_capture                  |
-  |                                | POST /payments/{id}/capture ---------->|
-  |                                |<---- succeeded                         |
-  |<--- payment id, status         |                                        |
-  |                                |<---- POST /api/webhooks/hyperswitch ---|  payment_succeeded
-  |                                |   verify HMAC, dedupe, record, 200     |
+  |                                |<---- requires_capture, hold not expired|
+  |                                | POST /payments/{id}/capture ---------->|  succeeded
+  |                                |<-- webhook payment_succeeded, verified and logged
 ```

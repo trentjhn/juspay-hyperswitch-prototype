@@ -10,6 +10,7 @@ export default function SeatPicker({ event }: { event: Event }) {
   const router = useRouter();
   const [sectionId, setSectionId] = useState(event.sections[0].id);
   const [requestedQuantity, setRequestedQuantity] = useState(2);
+  const [leaving, setLeaving] = useState(false);
 
   const section = event.sections.find((candidate) => candidate.id === sectionId) ?? event.sections[0];
   const maxQuantity = Math.min(MAX_TICKETS_PER_ORDER, section.seatsLeft);
@@ -18,6 +19,10 @@ export default function SeatPicker({ event }: { event: Event }) {
 
   function continueToCheckout(submit: FormEvent) {
     submit.preventDefault();
+    // Every click here would mint a new hold token, and so a new payment. The
+    // button locks after the first click so a double click opens one hold.
+    if (leaving) return;
+    setLeaving(true);
     // A fresh hold token for this checkout attempt. The server hashes it with
     // the cart to derive the Hyperswitch payment_id, so refreshing the checkout
     // page resumes this hold instead of opening another one.
@@ -95,9 +100,10 @@ export default function SeatPicker({ event }: { event: Event }) {
 
       <button
         type="submit"
-        className="mt-5 w-full rounded-md bg-accent px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-accent-strong"
+        disabled={leaving}
+        className="mt-5 w-full rounded-md bg-accent px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-accent-strong disabled:cursor-not-allowed disabled:opacity-50"
       >
-        Continue to checkout
+        {leaving ? "Opening your hold" : "Continue to checkout"}
       </button>
     </form>
   );

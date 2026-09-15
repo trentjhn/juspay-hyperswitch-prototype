@@ -5,10 +5,11 @@ import { redirect } from "next/navigation";
 import type { ReactNode } from "react";
 import NoKeysPanel from "@/components/NoKeysPanel";
 import OrderSummary from "@/components/OrderSummary";
-import { holdExpiresAt, openHold } from "@/lib/hold";
+import { openHold } from "@/lib/hold";
 import { envStatus, HyperswitchError, isConfigured, publicConfig, type Payment } from "@/lib/hyperswitch";
 import { formatUsd } from "@/lib/money";
 import { orderFromParams, type Order } from "@/lib/order";
+import { holdExpiresAt } from "@/lib/payment-policy";
 import CheckoutClient from "./CheckoutClient";
 
 export const metadata: Metadata = { title: "Checkout" };
@@ -42,9 +43,13 @@ export default async function CheckoutPage({ searchParams }: PageProps<"/checkou
     );
   }
 
-  // A resumed payment may already be past the point of paying.
+  // A resumed payment may already be past the point of paying. Send the
+  // client_secret along the same way Hyperswitch does on its redirect; the
+  // confirmation page needs it to call capture.
   if (payment.status === "requires_capture" || payment.status === "succeeded") {
-    redirect(`/confirmation?payment_id=${order.paymentId}`);
+    const next = new URLSearchParams({ payment_id: order.paymentId });
+    if (payment.client_secret) next.set("payment_intent_client_secret", payment.client_secret);
+    redirect(`/confirmation?${next}`);
   }
   if (!payment.client_secret || !["requires_payment_method", "requires_confirmation"].includes(payment.status)) {
     return (
@@ -68,7 +73,7 @@ export default async function CheckoutPage({ searchParams }: PageProps<"/checkou
         clientSecret={payment.client_secret}
         paymentId={payment.payment_id}
         returnUrl={returnUrl}
-        holdExpiresAt={holdExpiresAt(payment).toISOString()}
+        holdExpiresAt={holdExpiresAt(payment.created).toISOString()}
         totalLabel={formatUsd(order.totalCents)}
         eventHref={`/events/${order.event.slug}`}
       />

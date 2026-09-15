@@ -1,4 +1,5 @@
 import "server-only";
+import { timingSafeEqual } from "node:crypto";
 
 // Thin server-side client for the Hyperswitch REST API. Every call here uses
 // the secret API key, so this module must never reach the browser bundle.
@@ -50,6 +51,25 @@ export function toPaymentView(payment: Payment): PaymentView {
   const view: Partial<Payment> = { ...payment };
   delete view.client_secret;
   return view as PaymentView;
+}
+
+// Proof of possession for the browser-facing payment routes. Hyperswitch mints
+// the client_secret on create, the checkout page hands it to the SDK, and the
+// redirect back carries it as payment_intent_client_secret. Only the browser
+// that opened the hold has it. The payment_id is printed on the confirmation
+// page and is not a secret, so cancel and capture require the client_secret
+// before they act.
+export function clientSecretMatches(payment: Payment, supplied: string | undefined): boolean {
+  if (!supplied || !payment.client_secret) return false;
+  const expected = Buffer.from(payment.client_secret);
+  const received = Buffer.from(supplied);
+  return expected.length === received.length && timingSafeEqual(expected, received);
+}
+
+// The routes take { client_secret } as a JSON body. Anything else reads as absent.
+export async function readClientSecret(request: Request): Promise<string | undefined> {
+  const body = (await request.json().catch(() => null)) as { client_secret?: unknown } | null;
+  return typeof body?.client_secret === "string" ? body.client_secret : undefined;
 }
 
 export type EnvVar = { name: string; required: boolean; set: boolean; source: string };
