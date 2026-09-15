@@ -14,7 +14,7 @@ Developers, API Keys, Create New API Key. The secret shows once. The same page s
 
 ## Local payment
 
-`npm run dev`, Yale vs. Harvard, 2 End Zone, $81.35. The checkout page created `pay_1dcb489e3453078319b60b0e88` with `capture_method: manual`, and the sheet rendered Google Pay, Card, and Affirm. Card `4242 4242 4242 4242` authorized, the redirect landed on `/confirmation`, the capture route returned 200 in 1.6 seconds, and the API reported `succeeded` with 8135 of 8135 received on `stripe_test`.
+`npm run dev`, Yale vs. Harvard, 2 End Zone, $81.35. The checkout page created `pay_1dcb489e3453078319b60b0e88` with `capture_method: manual`, and the sheet rendered Google Pay, Card, and Affirm. Card `4242 4242 4242 4242` went through, the redirect landed on `/confirmation`, the capture route returned 200 in 1.6 seconds, and the API reported `succeeded` with 8135 of 8135 received on `stripe_test`. That `succeeded` was already there when the route read the payment; the route captured nothing (see Manual capture on the dummy connector below).
 
 I scripted the test payments with Playwright so they are repeatable. The card fields live in a cross-origin iframe, which Playwright handles because it drives the frame tree directly.
 
@@ -43,7 +43,7 @@ UConn vs. Villanova, 2 Courtside, $719.75. Over the $500 line in `payment-policy
 
 ## Manual capture on the dummy connector
 
-The payments above report `succeeded` before the capture route is called. Every no-3DS payment shows `amount_capturable` still equal to the amount next to a full `amount_received`; the 3DS ones show `amount_capturable` 0. I confirmed it by blocking the browser's call to `/api/payments/{id}/capture` and reading the payment back from the API: `pay_59c43be6e93fd8410d25f06508` ($81.35, card) was `succeeded` seventeen seconds after creation with no capture call made, and `pay_8c3699a7504195c7e4a361aa7c` ($719.75, 3DS, Complete) the same. The cause is in the connector: `dummyconnector/transformers.rs` maps its success status straight to `Charged`, with no authorized state, so `capture_method: manual` is accepted on create and has no effect at authorization. In the sandbox the capture route therefore finds nothing to capture and returns the payment as is. Its `requires_capture` branch, and the hold-expiry check inside it, run against a real connector; `route.test.ts` covers them with a mocked one.
+The payments above report `succeeded` before the capture route is called. Every no-3DS payment shows `amount_capturable` still equal to the amount next to a full `amount_received`; the 3DS ones show `amount_capturable` 0. I confirmed it by blocking the browser's call to `/api/payments/{id}/capture` and reading the payment back from the API: `pay_59c43be6e93fd8410d25f06508` ($81.35, card) was `succeeded` seventeen seconds after creation with no capture call made, and `pay_8c3699a7504195c7e4a361aa7c` ($719.75, 3DS, Complete) the same. The cause is in the connector: `dummyconnector/transformers.rs` maps its success status straight to `Charged`, with no authorized state, so `capture_method: manual` is accepted on create and has no effect at authorization. In the sandbox the capture route therefore finds nothing to capture and returns the payment as is. Its `requires_capture` branch, and the hold-expiry void inside it, would run against a connector that honors manual capture; `route.test.ts` covers them with a mocked one. So the authorize-then-capture design is verified against the API contract and a mocked connector, not against any sandbox connector: no sandbox payment has been captured by the route or voided after authorization. The unpaid void has run live: `pay_84b2cefa83035bd0669da4cf5a` is `cancelled` with reason `hold_expired`.
 
 ## Failure paths
 
@@ -57,7 +57,7 @@ Connectors, Payment Processors, Connect a Dummy Processor, **Fauxpay**: `test_ke
 
 Workflow, Routing, Rule Based Configuration. The field picker has `amount` under Payments; the operators are equal to, greater than, and less than, so "$500 and up" is written as `amount` greater than `49999` and the other side as `amount` less than `50000` (cents). Rule 1 sends to `stripe_test_default`, rule 2 to `fauxpay_default`. Configure Rule, then Save and Activate. The API shows it as `routing_eaCDOxnmQagbytzrkXMH`, kind `advanced`, active for the profile; `GET /routing/{id}` returns the two rules with the `merchant_connector_id` each resolves to. No app change was needed.
 
-Two payments after activation: $81.35 (Yale vs. Harvard, 2 End Zone) is `pay_ad481ce93954994a34ee3459f2`, connector `fauxpay`, and the confirmation page prints Processor: fauxpay; the same path on the deployed site is `pay_bff79db4ce5cd9158310445917`, also `fauxpay` (`07-routed-fauxpay.png`). $719.75 (UConn, 2 Courtside) is `pay_43f3845358c8eecd8973cbfc3b`, connector `stripe_test`; that is the rejected 3DS payment above, so the routing decision shows on a failed payment as well as a successful one. With Fauxpay serving only cards, the sheet on the under-$500 checkout still rendered Google Pay, Card, and Affirm.
+Two payments after activation: $81.35 (Yale vs. Harvard, 2 End Zone) is `pay_ad481ce93954994a34ee3459f2`, connector `fauxpay`, and the confirmation page prints Processor: fauxpay; the same path on the deployed site is `pay_bff79db4ce5cd9158310445917`, also `fauxpay` (`07-routed-fauxpay.png`). $719.75 (UConn, 2 Courtside) is `pay_43f3845358c8eecd8973cbfc3b`, connector `stripe_test`; that is the rejected 3DS payment above, so the routing decision shows on a failed payment as well as a successful one. With Fauxpay serving only cards, the sheet on the under-$500 checkout still rendered Google Pay, Card, and Affirm, and an $81.35 Affirm payment (`pay_c398b7c920c5e9703ffda0c6c7`) went to `stripe_test` and succeeded: the rule named Fauxpay, Hyperswitch dropped it for not supporting Affirm, and the payment fell through to the connector that does. Method eligibility is applied after the rule, not before it.
 
 ## Payments made
 
@@ -77,6 +77,7 @@ After the routing rule:
 | --- | --- | --- | --- | --- |
 | card, under $500 | `pay_ad481ce93954994a34ee3459f2` | $81.35 | `fauxpay` | `succeeded` |
 | card, under $500, deployed | `pay_bff79db4ce5cd9158310445917` | $81.35 | `fauxpay` | `succeeded` |
+| Affirm, under $500 | `pay_c398b7c920c5e9703ffda0c6c7` | $81.35 | `stripe_test` | `succeeded` |
 | 3DS reject, over $500 | `pay_43f3845358c8eecd8973cbfc3b` | $719.75 | `stripe_test` | `failed` |
 | card decline (before the rule) | `pay_7037da3b51ce3b30c2058a894f` | $179.91 | `stripe_test` | `failed` |
 
