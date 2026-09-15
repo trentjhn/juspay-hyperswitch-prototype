@@ -54,7 +54,7 @@ Built: a catalogue, seat and quantity selection with one fee line, a checkout th
 
 ```
 Browser                       Next.js server                        Hyperswitch sandbox
-| GET /checkout?cart&hold ---->| POST /payments {sha256(cart|hold), manual capture} -->|
+| GET /checkout?cart&hold ------>| POST /payments {sha256(cart|hold), manual capture} ->|
 | confirmPayment (SDK) --------------------------------------------------->|  authorize
 |                                |   rule: $500+ stripe_test, else fauxpay; 3DS at $500+
 |<--- 302 return_url?payment_id&payment_intent_client_secret&status -------|
