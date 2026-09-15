@@ -2,7 +2,7 @@
 
 A minimal event-ticketing storefront that takes a buyer from an event page to a completed payment in the Juspay Hyperswitch sandbox. Built for the Juspay Forward Deployed PM take-home. The design reasoning is in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md); the setup record and the things the docs did not say are in [docs/SETUP-LOG.md](docs/SETUP-LOG.md); screenshots of each flow are in [docs/screenshots/](docs/screenshots/).
 
-**Live:** https://juspay-hyperswitch-prototype.vercel.app. Test card `4242 4242 4242 4242`, any future expiry, any CVC. Courtside seats at the UConn game cross the $500 line and trigger 3DS, which the sandbox simulates with a challenge page.
+**Live:** https://juspay-hyperswitch-prototype.vercel.app. Test card `4242 4242 4242 4242`, any future expiry, any CVC. Two courtside seats at the UConn game come to $719.75, over the $500 line, and trigger 3DS, which the sandbox simulates with a challenge page.
 
 Seat holds map onto Hyperswitch's manual capture: entering checkout authorizes the card, the confirmation page captures it if the hold is still inside its window, and a webhook route records status changes. Against the sandbox dummy connectors the capture step finds nothing to do, because they report `succeeded` at authorization; the setup log has the evidence.
 
@@ -89,7 +89,7 @@ Verified against https://docs.hyperswitch.io, https://api-reference.hyperswitch.
 
 Verified live against the sandbox after the account existed: a card payment on localhost and three on the deployed site, each created with `capture_method: manual` and reported `succeeded`; a $719.75 order that crossed the 3DS threshold, was created with `authentication_type: three_ds`, redirected to Hyperswitch's simulated challenge page, and completed; a declined card and a rejected 3DS challenge, both rendered as failures; two connectors behind an amount-based routing rule; and a `payment_succeeded` webhook delivered to the Vercel route, signature-verified, and logged. Payment IDs and the runtime log line are in `docs/SETUP-LOG.md`.
 
-The `@juspay-tech/react-hyper-js` package ships no TypeScript types; `src/types/react-hyper-js.d.ts` declares the three exports used here from reading the bundle. The SDK's own type notes say the sandbox dummy connector may report `succeeded` right after authorization even with manual capture, and it does: every dummy-connector payment in the setup log reached `succeeded` at authorization, before the capture route was called, so in the sandbox the route returns the payment as is. Its `requires_capture` branch, including the hold-expiry check, runs against a real connector and is covered by `route.test.ts` with a mocked one. Details in `docs/SETUP-LOG.md`.
+The `@juspay-tech/react-hyper-js` package ships no TypeScript types; `src/types/react-hyper-js.d.ts` declares the three exports used here from reading the bundle. The SDK's type notes say that for the `fauxpay` sandbox connector `amount_received` may reflect the authorized amount when the status is `succeeded` even with `capture_method: manual`. In practice every dummy connector behaves that way: each payment in the setup log reached `succeeded` at authorization, before the capture route was called, so in the sandbox the route returns the payment as is. Its `requires_capture` branch, including the hold-expiry check, runs against a real connector and is covered by `route.test.ts` with a mocked one. Details in `docs/SETUP-LOG.md`.
 
 ## Layout
 

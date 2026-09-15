@@ -15,7 +15,8 @@ const PAYMENT_ID = /^[A-Za-z0-9_]{1,64}$/;
 // Voids an unpaid hold when the checkout timer runs out. The caller proves it
 // opened the hold by sending the payment's client_secret. The browser may only
 // cancel a payment the buyer has not authorized yet; releasing an authorized
-// hold is a server-side job (see docs/ARCHITECTURE.md, "Auth void on expiry").
+// hold is a server-side job (see docs/ARCHITECTURE.md, section 3, "Order store, capture
+// from the webhook, and the sweep").
 export async function POST(request: NextRequest, context: RouteContext<"/api/payments/[paymentId]/cancel">) {
   const { paymentId } = await context.params;
   if (!PAYMENT_ID.test(paymentId)) return Response.json({ error: "Invalid payment id." }, { status: 400 });

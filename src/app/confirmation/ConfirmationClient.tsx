@@ -10,7 +10,7 @@ type CaptureResult = { payment: PaymentView; captured: boolean; holdExpired?: bo
 type State =
   | { kind: "loading" }
   | { kind: "error"; message: string }
-  | { kind: "done"; payment: PaymentView; holdExpired: boolean };
+  | { kind: "done"; payment: PaymentView; captured: boolean; holdExpired: boolean };
 
 // The capture is a POST so that nothing with side effects hangs off a page
 // load. It is safe to repeat: the route returns an already-captured payment
@@ -30,7 +30,7 @@ export default function ConfirmationClient({ paymentId, clientSecret }: { paymen
       });
       const result = (await response.json()) as CaptureResult;
       if ("error" in result) setState({ kind: "error", message: result.error });
-      else setState({ kind: "done", payment: result.payment, holdExpired: result.holdExpired === true });
+      else setState({ kind: "done", payment: result.payment, captured: result.captured, holdExpired: result.holdExpired === true });
     } catch {
       setState({ kind: "error", message: "Could not reach the server." });
     }
@@ -87,7 +87,9 @@ export default function ConfirmationClient({ paymentId, clientSecret }: { paymen
       return (
         <Panel title="You're in.">
           <p className="text-zinc-600">
-            The authorization was captured. That is the moment the hold became your order.
+            {state.captured
+              ? "The authorization was captured. That is the moment the hold became your order."
+              : "Hyperswitch reports the payment as complete. That is the moment the hold became your order."}
           </p>
           <Receipt payment={payment} />
           <Link href="/" className="mt-6 inline-block font-medium text-accent">
