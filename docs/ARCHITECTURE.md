@@ -46,7 +46,7 @@ Built: a catalogue, seat and quantity selection with one fee line, a checkout th
 
 **Payment methods.** `allowed_payment_method_types` is `credit`, `debit`, `apple_pay`, `google_pay`, plus `affirm` at $50 and above. Affirm over Klarna because it is the BNPL a US ticket buyer already sees at Ticketmaster and SeatGeek; below $50 it is a dead tab, so it is not offered.
 
-**Webhooks verified and logged; the return page drives capture.** The webhook route verifies `X-Webhook-Signature-512` (HMAC-SHA512 over the raw body, keyed by the profile's hash key), dedupes on `event_id` in memory, and logs the event; nothing acts on it yet. The order store in section 3 makes the webhook the record.
+**Webhooks verified and logged; the return page drives capture.** The webhook route verifies `X-Webhook-Signature-512` (HMAC-SHA512 over the raw body, keyed by the profile's hash key), dedupes on `event_id` in memory, and logs the event; nothing acts on it yet. The order store in section 3 would make the webhook the record.
 
 **Amounts in minor units, one fee line.** Cents everywhere until display. The fee on the event page is the fee on the checkout page is the amount sent to Hyperswitch.
 
